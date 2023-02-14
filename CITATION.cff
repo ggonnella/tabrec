@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Gonnella"
+  given-names: "Giorgio"
+  orcid: "https://orcid.org/0000-0003-3900-5397"
+title: 'The EGC format and GenExpect: representation and storage of rules about prokaryotic genome contents"
+version: 1.0
+date-released: 2023-02-14
+url: "htts://github.com/ggonnella/tabrec/"
