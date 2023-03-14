@@ -1,5 +1,7 @@
 == 0.2 ==
 - intabrec: specification for addressing records and fields
+- parser for intabrec strings
+- method for extraction of fields by intabrec strings
 
 == 0.1 ==
 initial version
