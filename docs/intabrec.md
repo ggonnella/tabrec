@@ -91,3 +91,12 @@ For example
 fields ``record_type``, ``id``, ``name``, ``type``, ``def`` eventually
 followed by tags, and records of type ``D`` have ``record_type``, ``id``
 and ``link``, eventually followed by tags.
+
+## Implementations
+
+A parser and extraction tool based on the specification given above are
+contained in the module ``tabrec_addressing``.
+
+Furthermore, an implementation of the specifications given above as TextFormats
+specification is contained in the package data file ``intabrec.tf.yaml``.
+
