@@ -1,0 +1,80 @@
+datatypes:
+
+  fields_address_string:
+    list_of: _fields_address_substring
+    splitted_by: ';'
+  records_address_string:
+    list_of: _records_address_substring
+    splitted_by: ';'
+  field_names_list:
+    list_of: _field_names_of_record_type
+    splitted_by: ';'
+
+  _fields_address_substring:
+    one_of:
+      - _fields_address_substring_with_subtypes
+      - _fields_address_substring_wo_subtypes
+  _fields_address_substring_with_subtypes:
+    composed_of:
+      - record_type: _identifier
+      - separator1: {constant: ':'}
+      - subtypes: _subtypes_list
+      - separator2: {constant: '.'}
+      - fields: _field_specs_list
+    hide_constants: True
+  _fields_address_substring_wo_subtypes:
+    composed_of:
+      - record_type: _identifier
+      - fields: _field_specs_list
+    splitted_by: '.'
+    implicit: {subtypes: [null]}
+  _records_address_substring:
+    composed_of:
+      - record_type: _identifier
+      - subtypes: _subtypes_list
+    required: 1
+    splitted_by: ':'
+  _subtypes_list:
+    list_of: _identifier
+    splitted_by: '|'
+  _field_specs_list:
+      list_of: _field_spec
+      splitted_by: '|'
+  _field_spec:
+    one_of:
+      - unsigned_integer
+      - _identifier
+  _field_names_of_record_type:
+    composed_of:
+      - record_type: _identifier
+      - field_names:
+          list_of: _identifier
+          splitted_by: ','
+    splitted_by: ':'
+  _identifier:
+    regex: '[A-Za-z_][A-Za-z0-9_]*'
+
+testdata:
+  field_names_list:
+    valid: {'A:foo,bar,xyz;B:foo,zyx':
+           [{"record_type":"A","field_names":["foo","bar","xyz"]},
+            {"record_type":"B","field_names":["foo","zyx"]}]}
+  records_address_string:
+    valid: {'R;F': [{"record_type":"R"},{"record_type":"F"}],
+            'R': [{"record_type":"R"}],
+            'R;F:taxon|strain':
+              [{"record_type":"R"},
+               {"record_type":"F","subtypes":["taxon","strain"]}]}
+  fields_address_string:
+    valid: {'F.1': [{"record_type":"F","fields":[1],"subtypes":[null]}],
+            'F.1;R.abc|def|3':
+              [{"record_type":"F","fields":[1],"subtypes":[null]},
+               {"record_type":"R","fields":["abc","def",3],"subtypes":[null]}],
+            'F.1;R:st1.abc|def':
+              [{"record_type":"F","fields":[1],"subtypes":[null]},
+               {"record_type":"R","subtypes":["st1"],"fields":["abc","def"]}],
+            'F:st1.1;R:st1|st2.abc|def;X.2':
+              [{"record_type":"F","subtypes":["st1"],"fields":[1]},
+               {"record_type":"R","subtypes":["st1","st2"],
+                                  "fields":["abc","def"]},
+               {"record_type":"X","fields":[2],"subtypes":[null]}]}
