@@ -40,6 +40,7 @@ setup(name='tabrec',
                'bin/tabrec-showsome', 'bin/tabrec-extract'],
       zip_safe=False,
       test_suite="pytest",
-      include_package_data=True,
       tests_require=['pytest', 'pytest-console-scripts'],
+      include_package_data=True,
+      package_data={"": ["data/intabrec.tf.yaml"]},
     )
