@@ -100,3 +100,10 @@ contained in the module ``tabrec_addressing``.
 Furthermore, an implementation of the specifications given above as TextFormats
 specification is contained in the package data file ``intabrec.tf.yaml``.
 
+## Acknowledgements
+
+This specification has been created in context of the DFG project GO 3192/1-1
+“Automated characterization of microbial genomes and metagenomes by collection
+and verification of association rules”. The funders had no role in study
+design, data collection and analysis.
+
