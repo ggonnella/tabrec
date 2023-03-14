@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+"""
+Usage:
+  tabrec-extract [options] <fields_address> <filename>...
+
+Options:
+  -d, --delimiter DELIM  Set the delimiter (default: tab)
+  -s, --subtypecol COL   The column containing the record subtype
+                         (default: any column may contain the subtype value)
+  -f, --fieldnames FN    A string containing record type, a colon, and a
+                         comma-separated list of names of the fields
+                         after the record type, in order.
+                         Multiple such strings may be given, separated by
+                         a semicolon. E.g. "A:foo,bar;B:baz,quux"
+                         (default: none; only field numbers and tag names are used)
+  -f --filewise          Handle each input file separately (default: concatenate them)
+  -h --help              Show this screen.
+  -V --version           Show version.
+
+Arguments:
+  <fields_address>    address of the fields to extract
+  <filename>...       file(s) to use; if not given, the standard input
+                      is used if the input is a pipe, otherwise all tsv files
+                      in the current directory are used
+"""
+
+import csv
+import sys
+import docopt
+import glob
+import os
+from tabrec.tabrec_addressing import parse_fields_address, extract_by_address
+
+def apply_fieldnames_to_extracted(extracted, rt_fieldnames):
+  k = list(extracted.keys())
+  for fn in k:
+    if isinstance(fn, int):
+      extracted[rt_fieldnames[fn - 1]] = extracted.pop(fn)
+  return extracted
+
+def process_table(filenames, address, subtype_column, indent, delimiter,
+                  fieldnames):
+  record_type_column = 0
+  for filename in filenames:
+    with open(filename, 'r') as file:
+      reader = csv.reader(file, delimiter=delimiter)
+      lineno = 0
+      for row in reader:
+        lineno += 1
+        extracted = extract_by_address(row, address, subtype_column)
+        rt = row[record_type_column]
+        if extracted:
+          if fieldnames and rt in fieldnames:
+            extracted = apply_fieldnames_to_extracted(extracted,
+                fieldnames[rt])
+          indent_str = ' ' * indent
+          print("{}{}  {}  {}".format(indent_str, lineno, rt, extracted))
+
+def parse_colnum(arg, minimum, default, name):
+  if not arg:
+    return default
+  else:
+    if not all(val.isdigit() for val in arg):
+      sys.stderr.write(\
+          f"Error: {name} column number must be an unsigned integer\n")
+      sys.stderr.write(f"Found: {arg}\n")
+      exit(1)
+    colnum = int(arg)
+    if colnum < minimum:
+      sys.stderr.write(f"Error: {name} column number must be >= {minimum}\n")
+      sys.stderr.write(f"Found: {arg}\n")
+      exit(1)
+    return colnum - 1
+
+def parse_fieldnames(arg):
+  if not arg:
+    return None
+  fieldnames = {}
+  for spec in arg.split(";"):
+    if ':' not in spec:
+      sys.stderr.write("Error: fieldnames must be in the form "+\
+          "'record_type:name,name,name;record_type:name,name,name'\n")
+      sys.stderr.write(f"Found: {spec}\n")
+      exit(1)
+    rt, names = spec.split(':')
+    names = names.split(',')
+    fieldnames[rt] = names
+  return fieldnames
+
+def parse_files(arg):
+  if arg:
+    for file in arg:
+      if not os.path.isfile(file):
+        sys.stderr.write("Error: file not found: {}\n".format(file))
+        exit(1)
+    return arg
+  else:
+    # check if there is an incoming pipe
+    if not sys.stdin.isatty():
+      return [sys.stdin]
+    else:
+      # all tsv files in the directory
+      return glob.glob('*.tsv')
+
+def main():
+  args = docopt.docopt(__doc__, version='1.0')
+  subtype_colnum = parse_colnum(args['--subtypecol'], 2, None, 'subtype')
+  filenames = parse_files(args['<filename>'])
+  delimiter = args['--delimiter'] if args['--delimiter'] else '\t'
+  fieldnames = parse_fieldnames(args['--fieldnames'])
+  try:
+    address = parse_fields_address(args['<fields_address>'], fieldnames)
+  except ValueError as e:
+    sys.stderr.write("Error: {}\n".format(e))
+    exit(1)
+  if args['--filewise']:
+    for filename in filenames:
+      print("File: {}".format(filename))
+      process_table([filename], address, subtype_colnum, 2, delimiter,
+          fieldnames)
+  else:
+    process_table(filenames, address, subtype_colnum, 0, delimiter,
+        fieldnames)
+
+if __name__ == '__main__':
+  main()

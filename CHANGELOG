@@ -2,6 +2,7 @@
 - intabrec: specification for addressing records and fields
 - parser for intabrec strings
 - method for extraction of fields by intabrec strings
+- CLI tool tabrec-extract for intabrec-based field extraction
 
 == 0.1 ==
 initial version
