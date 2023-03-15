@@ -1,3 +1,6 @@
+== 0.3 ==
+- renamed intabrec to TabRecPath and improved documentation
+
 == 0.2 ==
 - intabrec: specification for addressing records and fields
 - parser for intabrec strings

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Usage:
-  tabrec-extract [options] <fields_address> <filename>...
+  tabrec-extract [options] <fields_path> <filename>...
 
 Options:
   -d, --delimiter DELIM  Set the delimiter (default: tab)
@@ -18,7 +18,7 @@ Options:
   -V --version           Show version.
 
 Arguments:
-  <fields_address>    address of the fields to extract
+  <fields_path>    address of the fields to extract
   <filename>...       file(s) to use; if not given, the standard input
                       is used if the input is a pipe, otherwise all tsv files
                       in the current directory are used
@@ -29,7 +29,7 @@ import sys
 import docopt
 import glob
 import os
-from tabrec.tabrec_addressing import parse_fields_address, extract_by_address
+from tabrec.path import parse_fields_path, extract_fields, parse_fieldnames
 
 def apply_fieldnames_to_extracted(extracted, rt_fieldnames):
   k = list(extracted.keys())
@@ -38,7 +38,7 @@ def apply_fieldnames_to_extracted(extracted, rt_fieldnames):
       extracted[rt_fieldnames[fn - 1]] = extracted.pop(fn)
   return extracted
 
-def process_table(filenames, address, subtype_column, indent, delimiter,
+def process_table(filenames, fields_path, subtype_column, indent, delimiter,
                   fieldnames):
   record_type_column = 0
   for filename in filenames:
@@ -47,7 +47,7 @@ def process_table(filenames, address, subtype_column, indent, delimiter,
       lineno = 0
       for row in reader:
         lineno += 1
-        extracted = extract_by_address(row, address, subtype_column)
+        extracted = extract_fields(row, fields_path, subtype_column)
         rt = row[record_type_column]
         if extracted:
           if fieldnames and rt in fieldnames:
@@ -72,21 +72,6 @@ def parse_colnum(arg, minimum, default, name):
       exit(1)
     return colnum - 1
 
-def parse_fieldnames(arg):
-  if not arg:
-    return None
-  fieldnames = {}
-  for spec in arg.split(";"):
-    if ':' not in spec:
-      sys.stderr.write("Error: fieldnames must be in the form "+\
-          "'record_type:name,name,name;record_type:name,name,name'\n")
-      sys.stderr.write(f"Found: {spec}\n")
-      exit(1)
-    rt, names = spec.split(':')
-    names = names.split(',')
-    fieldnames[rt] = names
-  return fieldnames
-
 def parse_files(arg):
   if arg:
     for file in arg:
@@ -107,19 +92,19 @@ def main():
   subtype_colnum = parse_colnum(args['--subtypecol'], 2, None, 'subtype')
   filenames = parse_files(args['<filename>'])
   delimiter = args['--delimiter'] if args['--delimiter'] else '\t'
-  fieldnames = parse_fieldnames(args['--fieldnames'])
   try:
-    address = parse_fields_address(args['<fields_address>'], fieldnames)
+    fieldnames = parse_fieldnames(args['--fieldnames'])
+    fields_path = parse_fields_path(args['<fields_path>'], fieldnames)
   except ValueError as e:
     sys.stderr.write("Error: {}\n".format(e))
     exit(1)
   if args['--filewise']:
     for filename in filenames:
       print("File: {}".format(filename))
-      process_table([filename], address, subtype_colnum, 2, delimiter,
+      process_table([filename], fields_path, subtype_colnum, 2, delimiter,
           fieldnames)
   else:
-    process_table(filenames, address, subtype_colnum, 0, delimiter,
+    process_table(filenames, fields_path, subtype_colnum, 0, delimiter,
         fieldnames)
 
 if __name__ == '__main__':

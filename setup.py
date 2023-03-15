@@ -42,5 +42,5 @@ setup(name='tabrec',
       test_suite="pytest",
       tests_require=['pytest', 'pytest-console-scripts'],
       include_package_data=True,
-      package_data={"": ["data/intabrec.tf.yaml"]},
+      package_data={"": ["data/tabrecpath.tf.yaml"]},
     )
