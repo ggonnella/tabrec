@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+"""
+Overwrite the IDs of the records of a given record type,
+by substituting them with integers starting from 1, prefixed
+by a given string (by default the record type).
+
+Use this script to edit the IDs directly ONLY if there are no
+references to the IDs in the other records. Otherwise, use
+the --list option and pass the output to the tabrec-replace-ids
+script.
+
+Usage:
+  tabrec-renumber-ids [options] <filename> <record_type> [<prefix>]
+
+Arguments:
+  <filename>      TSV file containing records
+  <record_type>   record type (first column)
+  <prefix>        prefix to use (default: record_type)
+
+Options:
+  -d, --delimiter D  delimiter to use (default: tab)
+  -s, --start S      start numbering from S (default: 1)
+  -i, --interval I   increment by I (default: 1)
+  -l, --list         output a list of original record IDs and the new IDs
+                     instead of the modified file
+  -h --help          show this screen.
+"""
+
+import csv
+import sys
+from docopt import docopt
+
+def rename_record_ids(filename, record_type, prefix,
+                      start, interval, delimiter):
+    with open(filename, 'r') as input_file:
+        reader = csv.reader(input_file, delimiter=delimiter,
+                            quoting=csv.QUOTE_NONE)
+        writer = csv.writer(sys.stdout, delimiter=delimiter,
+                            lineterminator="\n", quoting=csv.QUOTE_NONE)
+        count = start
+        for row in reader:
+            if row[0] == record_type:
+                row[1] = f"{prefix}{count}"
+                count += interval
+            writer.writerow(row)
+
+def list_record_ids(filename, record_type, prefix,
+                    start, interval, delimiter):
+    with open(filename, 'r') as input_file:
+        reader = csv.reader(input_file, delimiter=delimiter,
+                            quoting=csv.QUOTE_NONE)
+        count = start
+        for row in reader:
+            if row[0] == record_type:
+                print(row[1] + delimiter + f"{prefix}{count}")
+                count += interval
+
+if __name__ == '__main__':
+    arguments = docopt(__doc__)
+    filename = arguments['<filename>']
+    record_type = arguments['<record_type>']
+    prefix = arguments['<prefix>'] or record_type
+    start = int(arguments['--start'] or 1)
+    interval = int(arguments['--interval'] or 1)
+    delimiter = arguments['--delimiter'] or '\t'
+    if arguments['--list']:
+      list_record_ids(filename, record_type, prefix, start, interval, delimiter)
+    else:
+      rename_record_ids(filename, record_type, prefix, start, interval,
+                        delimiter)
+
