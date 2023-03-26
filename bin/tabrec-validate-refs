@@ -1,35 +1,40 @@
 #!/usr/bin/env python3
 """
 Usage:
-  tabrec-check-references.py [options] <infname> <ref_pos> <ref_rtype> <ref_ids_colnum>
+  tabrec-check-references.py [options] <infname> <ref_pos> <ids_pos>
 
 Arguments:
     <infname>          Name of input TSV file
-    <ref_pos>          Comma-separated list of record_type:col[-col...]
-                       specifying record types and columns thereof containing
-                       references; col are either 1-based column numbers or
-                       tag names
-    <ref_rtype>        Record type of referenced lines
-    <ref_ids_colnum>   1-based column number of column containing IDs in
-                       referenced lines
+    <ref_pos>          Positions of the references
+                         Format: rt:col[-col...][,rt:col[-col...]...
+                         rt: record type
+                         col: 1-based column number or tag name
+    <ids_pos>          Position of the identifiers
+                         Format: rt[:col]
+                         rt: record type
+                         col: 1-based column number (default: 2)
 
 Options:
-  -n             Do not check if all IDs are referenced
-  -h --help      Show this screen.
-  --version      Show version.
-  -c --colon     Include colon in list of word characters
-  -i --ignore I  Comma-separated list of identifiers to ignore
+  --nr                  Do not check if all IDs are referenced
+  --ni                  Do not check if all references are valid
+  --show                Show list of references and list of IDs
+  --colon               Include colon in list of word characters
+  -l --ignore-list L    Comma-separated list of identifiers to ignore
+  -r --ignore-regex R   Regular expression for identifiers to ignore
+  -R --ids-regex R      Identifier regular expression
+  -h --help             Show this screen.
+  --version             Show version.
 
 Exit status:
   0  if no errors
-  1  if errors
+  >0  if errors (number of errors)
 """
 
 import sys
 from docopt import docopt
 import re
 
-def extract_ref_set(infname, refpos, tagnames, regex, ignore):
+def extract_ref_set(infname, refpos, tagnames, regex, idchk):
     ref_set = set()
     with open(infname, "r") as f:
         for line_num, line in enumerate(f, 1):
@@ -42,21 +47,20 @@ def extract_ref_set(infname, refpos, tagnames, regex, ignore):
                     sys.stderr.write(f"Column number {colnum} does not "+\
                         f"exist in line {line_num}\n")
                     sys.exit(1)
-                identifiers = re.findall(regex, fields[colnum])
-                identifiers = [x for x in identifiers if x not in ignore]
+                identifiers = [x for x in re.findall(regex, fields[colnum]) \
+                               if idchk.check(x)]
                 ref_set.update(identifiers)
             for tagname in tagnames:
                 for field in fields:
                     if field.startswith(tagname + ":") \
                           and field[len(tagname)+3] == ":":
                         value = field[len(tagname) + 3:]
-                        identifiers = re.findall(regex, value)
-                        identifiers = \
-                            [x for x in identifiers if x not in ignore]
+                        identifiers = [x for x in re.findall(regex, value) \
+                                       if idchk.check(x)]
                         ref_set.update(identifiers)
     return ref_set
 
-def extract_ids_set(infname, ref_rtype, ref_ids_colnum, ignore):
+def extract_ids_set(infname, ref_rtype, ref_ids_colnum, idchk):
     ids_set = set()
     with open(infname, "r") as f:
         for line_num, line in enumerate(f, 1):
@@ -68,11 +72,11 @@ def extract_ids_set(infname, ref_rtype, ref_ids_colnum, ignore):
                     f"exist in line {line_num}\n")
                 sys.exit(1)
             identifier = fields[ref_ids_colnum]
-            if identifier not in ignore:
+            if idchk.check(identifier):
               ids_set.add(identifier)
     return ids_set
 
-def check_refs_against_ids(ids_set, refpos, tagnames, infname, regex, ignore):
+def check_refs_against_ids(ids_set, refpos, tagnames, infname, regex, idchk):
     n_errors = 0
     for line_num, line in enumerate(open(infname), 1):
         fields = line.strip().split("\t")
@@ -81,16 +85,16 @@ def check_refs_against_ids(ids_set, refpos, tagnames, infname, regex, ignore):
         colnums, tagnames = refpos[fields[0]]
         identifiers = set()
         for colnum in colnums:
-          new_ids = re.findall(regex, fields[colnum])
-          new_ids = [x for x in new_ids if x not in ignore]
+          new_ids = [x for x in re.findall(regex, fields[colnum]) \
+                     if idchk.check(x)]
           identifiers.update(new_ids)
         for tagname in tagnames:
             for field in fields:
                 if field.startswith(tagname + ":") \
                       and field[len(tagname)+3] == ":":
                     value = field[len(tagname) + 3:]
-                    new_ids = re.findall(regex, value)
-                    new_ids = [x for x in new_ids if x not in ignore]
+                    new_ids = [x for x in re.findall(regex, value) \
+                               if idchk.check(x)]
                     identifiers.update(new_ids)
         for identifier in identifiers:
             if identifier not in ids_set:
@@ -100,7 +104,7 @@ def check_refs_against_ids(ids_set, refpos, tagnames, infname, regex, ignore):
                 n_errors += 1
     return n_errors
 
-def check_ids_against_refs(ref_set, ref_rtype, ref_ids_colnum, infname, ignore):
+def check_ids_against_refs(ref_set, ref_rtype, ref_ids_colnum, infname, idchk):
     n_errors = 0
     with open(infname, "r") as f:
         for line_num, line in enumerate(f, 1):
@@ -108,18 +112,45 @@ def check_ids_against_refs(ref_set, ref_rtype, ref_ids_colnum, infname, ignore):
             if fields[0] != ref_rtype:
                 continue
             identifier = fields[ref_ids_colnum]
-            if identifier not in ignore and identifier not in ref_set:
+            if idchk.check(identifier) and identifier not in ref_set:
                 sys.stderr.write(f"Error in line {line_num}, "+\
                     f"identifier never referenced '{identifier}':\n")
                 sys.stderr.write(line)
                 n_errors += 1
     return n_errors
 
+class IdentifierChecker:
+  def __init__(self, ignore, regex_ignore, regex_ids):
+    self.ignore = ignore
+    self.regex_ignore = re.compile(regex_ignore) if regex_ignore else None
+    self.regex_ids = re.compile(regex_ids) if regex_ids else None
+
+  @classmethod
+  def new_from_args(cls, arg_ignore_list, arg_ignore_regex, arg_ids_regex):
+    ignore = set(arg_ignore_list.split(",")) \
+               if arg_ignore_list else set()
+    regex_ignore = arg_ignore_regex
+    regex_ids = arg_ids_regex
+    return cls(ignore, regex_ignore, regex_ids)
+
+  def check(self, identifier):
+    if identifier in self.ignore:
+      return False
+    if self.regex_ignore:
+      if re.match(self.regex_ignore, identifier):
+        return False
+    if self.regex_ids:
+      if not re.match(self.regex_ids, identifier):
+        return False
+    return True
+
 def main(args):
     infname = args["<infname>"]
     refpos = {}
     refpos_elems = args["<ref_pos>"].split(",")
-    ignore = set(args["--ignore"].split(","))
+    idchk = IdentifierChecker.new_from_args(args["--ignore-list"],
+                                            args["--ignore-regex"],
+                                            args["--ids-regex"])
     for refpos_elem in refpos_elems:
       rtype, cols = refpos_elem.split(":")
       if cols == "":
@@ -131,25 +162,32 @@ def main(args):
       colnums = [i for i in colnums_tagnames if isinstance(i, int)]
       tagnames = [i for i in colnums_tagnames if isinstance(i, str)]
       refpos[rtype] = (colnums, tagnames)
-    ref_rtype = args["<ref_rtype>"]
-    ref_ids_colnum = int(args["<ref_ids_colnum>"]) - 1
+    if ":" in args["<ids_pos>"]:
+      ref_rtype, ref_ids_colnum = args["<ids_pos>"].split(":")
+      ref_ids_colnum = int(ref_ids_colnum) - 1
+    else:
+      ref_rtype = args["<ids_pos>"]
+      ref_ids_colnum = 1
     if args["--colon"]:
       regex = r"\b[\w:]+\b"
     else:
       regex = r"\b\w+\b"
 
-    ids_set = extract_ids_set(infname, ref_rtype, ref_ids_colnum, ignore)
-    ref_set = extract_ref_set(infname, refpos, tagnames, regex, ignore)
-
-    n_errors = \
-        check_refs_against_ids(ids_set, refpos, tagnames, infname, regex,
-            ignore)
-    if not args["-n"]:
-      n_errors += \
-          check_ids_against_refs(ref_set, ref_rtype, ref_ids_colnum, infname,
-              ignore)
+    ids_set = extract_ids_set(infname, ref_rtype, ref_ids_colnum, idchk)
+    if args['--show']:
+      sys.stderr.write(f"Identifiers: {sorted(ids_set)}\n\n")
+    ref_set = extract_ref_set(infname, refpos, tagnames, regex, idchk)
+    if args['--show']:
+      sys.stderr.write(f"References: {sorted(ref_set)}\n\n")
+    n_errors = 0
+    if not args["--ni"]:
+      n_errors += check_refs_against_ids(ids_set, refpos, tagnames, infname,
+          regex, idchk)
+    if not args["--nr"]:
+      n_errors += check_ids_against_refs(ref_set, ref_rtype, ref_ids_colnum,
+          infname, idchk)
     if n_errors > 0:
-        sys.exit(1)
+        sys.exit(n_errors)
 
 if __name__ == "__main__":
     main(docopt(__doc__))
