@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+"""
+Usage:
+  tabrec-check-references.py [options] <infname> <ref_pos> <ref_rtype> <ref_ids_colnum>
+
+Arguments:
+    <infname>          Name of input TSV file
+    <ref_pos>          Comma-separated list of record_type:col[-col...]
+                       specifying record types and columns thereof containing
+                       references; col are either 1-based column numbers or
+                       tag names
+    <ref_rtype>        Record type of referenced lines
+    <ref_ids_colnum>   1-based column number of column containing IDs in
+                       referenced lines
+
+Options:
+  -n             Do not check if all IDs are referenced
+  -h --help      Show this screen.
+  --version      Show version.
+  -c --colon     Include colon in list of word characters
+  -i --ignore I  Comma-separated list of identifiers to ignore
+
+Exit status:
+  0  if no errors
+  1  if errors
+"""
+
+import sys
+from docopt import docopt
+import re
+
+def extract_ref_set(infname, refpos, tagnames, regex, ignore):
+    ref_set = set()
+    with open(infname, "r") as f:
+        for line_num, line in enumerate(f, 1):
+            fields = line.strip().split("\t")
+            if fields[0] not in refpos:
+                continue
+            colnums, tagnames = refpos[fields[0]]
+            for colnum in colnums:
+                if len(fields) < colnum:
+                    sys.stderr.write(f"Column number {colnum} does not "+\
+                        f"exist in line {line_num}\n")
+                    sys.exit(1)
+                identifiers = re.findall(regex, fields[colnum])
+                identifiers = [x for x in identifiers if x not in ignore]
+                ref_set.update(identifiers)
+            for tagname in tagnames:
+                for field in fields:
+                    if field.startswith(tagname + ":") \
+                          and field[len(tagname)+3] == ":":
+                        value = field[len(tagname) + 3:]
+                        identifiers = re.findall(regex, value)
+                        identifiers = \
+                            [x for x in identifiers if x not in ignore]
+                        ref_set.update(identifiers)
+    return ref_set
+
+def extract_ids_set(infname, ref_rtype, ref_ids_colnum, ignore):
+    ids_set = set()
+    with open(infname, "r") as f:
+        for line_num, line in enumerate(f, 1):
+            fields = line.strip().split("\t")
+            if fields[0] != ref_rtype:
+                continue
+            if len(fields) < ref_ids_colnum:
+                sys.stderr.write(f"Column number {ref_ids_colnum} does not "+\
+                    f"exist in line {line_num}\n")
+                sys.exit(1)
+            identifier = fields[ref_ids_colnum]
+            if identifier not in ignore:
+              ids_set.add(identifier)
+    return ids_set
+
+def check_refs_against_ids(ids_set, refpos, tagnames, infname, regex, ignore):
+    n_errors = 0
+    for line_num, line in enumerate(open(infname), 1):
+        fields = line.strip().split("\t")
+        if fields[0] not in refpos:
+            continue
+        colnums, tagnames = refpos[fields[0]]
+        identifiers = set()
+        for colnum in colnums:
+          new_ids = re.findall(regex, fields[colnum])
+          new_ids = [x for x in new_ids if x not in ignore]
+          identifiers.update(new_ids)
+        for tagname in tagnames:
+            for field in fields:
+                if field.startswith(tagname + ":") \
+                      and field[len(tagname)+3] == ":":
+                    value = field[len(tagname) + 3:]
+                    new_ids = re.findall(regex, value)
+                    new_ids = [x for x in new_ids if x not in ignore]
+                    identifiers.update(new_ids)
+        for identifier in identifiers:
+            if identifier not in ids_set:
+                sys.stderr.write(f"Error in line {line_num}, "+\
+                    f"invalid reference '{identifier}':\n")
+                sys.stderr.write(line)
+                n_errors += 1
+    return n_errors
+
+def check_ids_against_refs(ref_set, ref_rtype, ref_ids_colnum, infname, ignore):
+    n_errors = 0
+    with open(infname, "r") as f:
+        for line_num, line in enumerate(f, 1):
+            fields = line.strip().split("\t")
+            if fields[0] != ref_rtype:
+                continue
+            identifier = fields[ref_ids_colnum]
+            if identifier not in ignore and identifier not in ref_set:
+                sys.stderr.write(f"Error in line {line_num}, "+\
+                    f"identifier never referenced '{identifier}':\n")
+                sys.stderr.write(line)
+                n_errors += 1
+    return n_errors
+
+def main(args):
+    infname = args["<infname>"]
+    refpos = {}
+    refpos_elems = args["<ref_pos>"].split(",")
+    ignore = set(args["--ignore"].split(","))
+    for refpos_elem in refpos_elems:
+      rtype, cols = refpos_elem.split(":")
+      if cols == "":
+        sys.stderr.write("Error: no columns specified for record type "+\
+                         f"'{rtype}'\n")
+        sys.exit(1)
+      colnums_tagnames = [int(i) - 1 if i.isdigit() else i \
+                          for i in cols.split("-")]
+      colnums = [i for i in colnums_tagnames if isinstance(i, int)]
+      tagnames = [i for i in colnums_tagnames if isinstance(i, str)]
+      refpos[rtype] = (colnums, tagnames)
+    ref_rtype = args["<ref_rtype>"]
+    ref_ids_colnum = int(args["<ref_ids_colnum>"]) - 1
+    if args["--colon"]:
+      regex = r"\b[\w:]+\b"
+    else:
+      regex = r"\b\w+\b"
+
+    ids_set = extract_ids_set(infname, ref_rtype, ref_ids_colnum, ignore)
+    ref_set = extract_ref_set(infname, refpos, tagnames, regex, ignore)
+
+    n_errors = \
+        check_refs_against_ids(ids_set, refpos, tagnames, infname, regex,
+            ignore)
+    if not args["-n"]:
+      n_errors += \
+          check_ids_against_refs(ref_set, ref_rtype, ref_ids_colnum, infname,
+              ignore)
+    if n_errors > 0:
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main(docopt(__doc__))
