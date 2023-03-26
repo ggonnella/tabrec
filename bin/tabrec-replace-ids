@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+"""
+Replace identifiers in a file.
+
+The script is not specific of tabrec format files, but works with those
+files as well, thus it is included here.
+Identifiers are defined as sequences of letters, digits, and underscores.
+
+Usage:
+    tabrec-replace-ids [options] <input_file> <id_file>
+
+Arguments:
+    <input_file>        Input file to search and replace identifiers.
+    <id_file>           Tab-separated file with input and output identifiers.
+
+Options:
+    -q, --quiet         Do not print any output.
+    -i, --interactive   Ask the user whether to replace each line.
+    -h, --help          Show this help message.
+    -o, --outfile O     Output file name. By default:
+                          standard output in non-interactive mode
+                          <input_file>.out in interactive mode
+"""
+
+import re
+import sys
+from docopt import docopt
+from termcolor import colored
+
+def read_identifiers(id_file):
+    """
+    Read the input and output identifiers from the given TSV file.
+    Return a dictionary with input identifiers as keys and
+    output identifiers as values.
+    """
+    identifiers = {}
+    with open(id_file, 'r') as f:
+        for line in f:
+            cols = line.strip().split('\t')
+            if len(cols) == 2:
+                identifiers[cols[0]] = cols[1]
+    return identifiers
+
+
+def get_token_indices(line):
+    """
+    Get the indices of all tokens (sequences of subsequent letters,
+    digits, and underscores) in the given line.
+    """
+    return [(m.start(), m.end()) for m in re.finditer(r'\w+', line)]
+
+
+def replace_identifiers(line, identifiers):
+    """
+    Replace all occurrences of input identifiers in the given line
+    with their corresponding output identifiers,
+    only if they are complete tokens.
+    If an input identifier is completely contained in another input
+    identifier, replace the longest one first.
+    """
+    token_indices = get_token_indices(line)
+    parts = []
+    for start, end in token_indices:
+        original_part = line[start:end]
+        replaced_part = None
+        for k, v in sorted(identifiers.items(), key=lambda item: len(item[0]),
+                           reverse=True):
+            if original_part == k:
+                # Check if the input identifier is a complete token.
+                if start == 0 or not line[start - 1].isalnum():
+                    if end == len(line) or not line[end].isalnum():
+                        replaced_part = v
+                        break
+        parts.append((original_part, replaced_part))
+
+    result = ""
+    old_line_c = ""
+    new_line_c = ""
+
+    for i, (original_part, replaced_part) in enumerate(parts):
+        if replaced_part is not None:
+            result += replaced_part
+            old_line_c += colored(original_part, "red")
+            new_line_c += colored(replaced_part, "green")
+        else:
+            result += original_part
+            old_line_c += original_part
+            new_line_c += original_part
+        if i < len(parts) - 1:
+            result += line[token_indices[i][1]:token_indices[i+1][0]]
+            old_line_c += line[token_indices[i][1]:token_indices[i+1][0]]
+            new_line_c += line[token_indices[i][1]:token_indices[i+1][0]]
+
+    # add the remaining part of the line after the last token
+    result += line[token_indices[-1][1]:]
+    old_line_c += line[token_indices[-1][1]:]
+    new_line_c += line[token_indices[-1][1]:]
+
+    return result, old_line_c, new_line_c
+
+def display_changes(i, old_line_c, new_line_c):
+    sys.stderr.write("\n")
+    sys.stderr.write(colored(f"Original line {i}: ", "light_blue") + \
+                     old_line_c.strip() + "\n")
+    sys.stderr.write(colored(f"Replaced line {i}: ", "light_blue") + \
+                     new_line_c.strip() + "\n")
+
+def prompt_user(i, old_line_c, new_line_c):
+    """
+    Ask the user whether to replace the line or not.
+    Return one of the following strings: "yes", "no", "review".
+    """
+    choice = input("Replace this line? (y:yes, n:no, r:review, default:yes):")
+    while choice not in ['', 'y', 'n', 'r']:
+        choice = input("Invalid choice. Replace this line? (y, n, r): ")
+    if choice == "":
+        choice = "y"
+    return choice
+
+
+def main(args):
+    input_file = args['<input_file>']
+    id_file = args['<id_file>']
+    quiet = args['--quiet']
+    interactive = args['--interactive']
+    if quiet and interactive:
+        sys.stderr.write("Cannot be quiet and interactive at the same time.\n")
+        exit(1)
+
+    identifiers = read_identifiers(id_file)
+
+    out_f_std = False
+    if args['--outfile']:
+      out_f = open(args['--outfile'], 'w')
+    elif interactive:
+      out_f = open(input_file + ".out", 'w')
+    else:
+      out_f = sys.stdout
+      out_f_std = True
+    review_lines = []
+
+    with open(input_file, 'r') as in_f:
+        for i, old_line in enumerate(in_f, start=1):
+            new_line, old_line_c, new_line_c = \
+                replace_identifiers(old_line, identifiers)
+            if new_line == old_line:
+                out_f.write(old_line)
+            else:
+                display_changes(i, old_line_c, new_line_c)
+                if interactive:
+                  choice = prompt_user(i, old_line_c, new_line_c)
+                else:
+                  choice = 'y'
+                if choice == "y":
+                    out_f.write(new_line)
+                else:
+                    out_f.write(old_line)
+                    if choice == "r":
+                        review_lines.append(i)
+
+    if not out_f_std:
+      out_f.close()
+
+    if review_lines:
+        print("The following lines need review:")
+        for line_num in review_lines:
+            print(line_num)
+
+if __name__ == '__main__':
+    arguments = docopt(__doc__)
+    main(arguments)
