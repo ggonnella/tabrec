@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""
+Check that all identifiers in the specified column of records with the given
+record type are unique and consist of letters, numbers, and underscores
+(or optionally also colons).
+
+Usage:
+  tabrec-check-references [options] <infname> <rtype> [<colnum>]
+
+Arguments:
+  infname     Name of input file
+  rtype       Record type to consider
+  colnum      Column number containing identifiers [default: 2]
+
+Options:
+  --colon     Include colons in identifiers
+  --value V   Only consider records where field f has given value
+              Format: f:value, where f is a 1-based column number
+  -h --help   Show this screen.
+  --quiet     Do not print anything if no errors are found
+  --version   Show version.
+"""
+
+import sys
+import re
+from collections import defaultdict
+from docopt import docopt
+
+def main(args):
+    infname = args["<infname>"]
+    rtype = args["<rtype>"]
+    colnum = int(args["<colnum>"]) - 1 if args["<colnum>"] else 1
+    include_colon = args["--colon"]
+    pattern = r"^\w+(:\w+)*$" if include_colon else r"^\w+$"
+    if args["--value"]:
+      if ":" not in args["--value"]:
+        sys.exit("Error: --value argument must be of the form f:value")
+      req_col_value = args["--value"].split(":", 1)
+      req_col = int(req_col_value[0]) - 1
+      req_value = req_col_value[1]
+    else:
+      req_col = None
+      req_value = None
+
+    id_lines = defaultdict(list)
+    n_errors = 0
+
+    with open(infname, "r") as f:
+        for line_num, line in enumerate(f, 1):
+            fields = line.strip().split("\t")
+            if fields[0] != rtype:
+                continue
+            if req_col is not None and fields[req_col] != req_value:
+                continue
+            if len(fields) < colnum + 1:
+                sys.stderr.write(f"Column number {colnum+1} does not exist "+\
+                    f"in line {line_num} of file {infname}\n")
+                sys.exit(1)
+            id_value = fields[colnum]
+            if not re.match(pattern, id_value):
+                sys.stderr.write(f"Error: Invalid identifier: '{id_value}'\n")
+                sys.stderr.write(f"  Line {line_num}:\n    {line}")
+                n_errors += 1
+            id_lines[id_value].append((line_num, line))
+
+    for id_value, num_lines in id_lines.items():
+        if len(num_lines) > 1:
+          sys.stderr.write(f"Error: Identifier not unique: '{id_value}'\n")
+          n_errors += 1
+          for line_num, line in num_lines:
+              sys.stderr.write(f"  Line {line_num}:\n    "+line)
+
+    if n_errors > 0:
+      sys.exit(n_errors)
+    elif not args["--quiet"]:
+      if args["--value"]:
+        vmsg = f" (col {req_col+1} value '{req_value}')"
+      else:
+        vmsg = ""
+      sys.stdout.write("OK: No errors found: "+\
+          f"{len(id_lines)} unique {rtype}{vmsg} identifiers "+\
+          f"in column {colnum+1} found\n")
+      sys.exit(0)
+
+if __name__ == "__main__":
+    args = docopt(__doc__)
+    main(args)
+
