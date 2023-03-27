@@ -18,6 +18,7 @@ Options:
               Format: f:value, where f is a 1-based column number
   -h --help   Show this screen.
   --quiet     Do not print anything if no errors are found
+  --regex R   Check that all identifiers match the given regular expression
   --version   Show version.
 """
 
@@ -32,6 +33,7 @@ def main(args):
     colnum = int(args["<colnum>"]) - 1 if args["<colnum>"] else 1
     include_colon = args["--colon"]
     pattern = r"^\w+(:\w+)*$" if include_colon else r"^\w+$"
+    regex = re.compile(args["--regex"]) if args["--regex"] else None
     if args["--value"]:
       if ":" not in args["--value"]:
         sys.exit("Error: --value argument must be of the form f:value")
@@ -59,6 +61,11 @@ def main(args):
             id_value = fields[colnum]
             if not re.match(pattern, id_value):
                 sys.stderr.write(f"Error: Invalid identifier: '{id_value}'\n")
+                sys.stderr.write(f"  Line {line_num}:\n    {line}")
+                n_errors += 1
+            if regex and not re.match(regex, id_value):
+                sys.stderr.write("Error: Identifier does not "+\
+                    f"match given regex: '{id_value}'\n")
                 sys.stderr.write(f"  Line {line_num}:\n    {line}")
                 n_errors += 1
             id_lines[id_value].append((line_num, line))
