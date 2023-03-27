@@ -1,0 +1,92 @@
+#!/usr/bin/env python3
+"""
+Validate number of positional fields and absence of empty positional fields
+for the specified record type.
+
+Usage:
+  tabrec-validate-records [options] <infname> <rtypes> <nfields>
+
+Arguments:
+  infname     Name of input file
+  rtypes      Comma-separated list of record types to consider
+  nfields     Expected number of positional fields
+
+Options:
+  --notags      Disallow tags
+  --nocomments  Disallow comments
+  --empty       Allow empty positional fields
+  --select S    Only consider records where field f matches given regex
+                Format: f:regex, where f is a 1-based column number
+  -h --help     Show this screen.
+  --quiet       Do not print anything if no errors are found
+  --version     Show version.
+"""
+
+import sys
+import re
+from docopt import docopt
+
+# remove in-place from the string list fields
+# the last element containing a comment, if any
+def remove_comment(fields):
+    if fields[-1].startswith('#'):
+        fields.pop()
+
+# remove in-place from the string list fields
+# the last elements containing tags, if any
+# tags have the form XX:X:.* where X is a digit or letter
+def remove_tags(fields):
+    while len(fields) > 0 and re.match(r"^\w{2}:\w:.*$", fields[-1]):
+        fields.pop()
+
+def main(args):
+    infname = args["<infname>"]
+    rtypes = args["<rtypes>"].split(",")
+    nfields = int(args["<nfields>"])
+    notags = args["--notags"]
+    nocomments = args["--nocomments"]
+    empty = args["--empty"]
+    if args["--select"]:
+      if ":" not in args["--select"]:
+        sys.exit("Error: --select argument must be of the form f:regex")
+      req_col_regex = args["--select"].split(":", 1)
+      req_col = int(req_col_regex[0]) - 1
+      req_regex = re.compile(req_col_regex[1])
+    else:
+      req_col = None
+      req_regex = None
+
+    n_errors = 0
+
+    with open(infname, "r") as f:
+        for line_num, line in enumerate(f, 1):
+            fields = line.strip().split("\t")
+            if fields[0] not in rtypes:
+                continue
+            if req_col is not None and not req_regex.match(fields[req_col]):
+                continue
+            if not nocomments:
+              remove_comment(fields)
+            if not notags:
+              remove_tags(fields)
+            if len(fields) != nfields:
+                sys.stderr.write("Error: Record does not "+\
+                    f"have {nfields} fields:\n")
+                sys.stderr.write(f"  Line {line_num}:\n    {line}")
+                n_errors += 1
+            if not empty and any([field == "" for field in fields]):
+                sys.stderr.write("Error: Record contains "+\
+                    "an empty positional field:\n")
+                sys.stderr.write(f"  Line {line_num}:\n    {line}")
+                n_errors += 1
+
+    if n_errors > 0:
+      sys.exit(n_errors)
+    elif not args["--quiet"]:
+      sys.stdout.write("OK: No errors found\n")
+    sys.exit(0)
+
+if __name__ == "__main__":
+    args = docopt(__doc__)
+    main(args)
+

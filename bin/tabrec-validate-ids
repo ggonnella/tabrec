@@ -5,7 +5,7 @@ record type(s) are unique and consist of letters, numbers, and underscores
 (or optionally also colons).
 
 Usage:
-  tabrec-check-references [options] <infname> <rtypes> [<colnum>]
+  tabrec-validate-ids [options] <infname> <rtypes> [<colnum>]
 
 Arguments:
   infname     Name of input file

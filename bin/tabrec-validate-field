@@ -3,7 +3,7 @@
 Validate values in the specified field of records with the given record type.
 
 Usage:
-  tabrec-check-references [options] <infname> <rtypes> <colnum> <regex>
+  tabrec-validate-field [options] <infname> <rtypes> <colnum> <regex>
 
 Arguments:
   infname     Name of input file

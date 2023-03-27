@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
+Validate the references in given records of a tabrec file by cross-checking them
+with a list of identifiers in a given record type.
+
 Usage:
-  tabrec-check-references.py [options] <infname> <ref_pos> <ids_pos>
+  tabrec-validate-refs [options] <infname> <ref_pos> <ids_pos>
 
 Arguments:
     <infname>          Name of input TSV file
